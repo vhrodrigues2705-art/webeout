@@ -16,7 +16,6 @@ import database
 from price_engine import PriceEngine
 from collector import ProductCollector
 
-
 # =====================================================
 # INICIALIZAÇÃO
 # =====================================================
@@ -26,13 +25,11 @@ database.initialize_database()
 engine = PriceEngine()
 collector = ProductCollector()
 
-
 app = FastAPI(
     title="Webeout API",
     description="Global Deal Tracker",
     version="1.3.0"
 )
-
 
 # =====================================================
 # CORS
@@ -61,7 +58,6 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"]
 )
 
-
 # =====================================================
 # MODELO DE REGISTRO DE PREÇOS
 # =====================================================
@@ -86,7 +82,6 @@ class PriceRegistration(BaseModel):
     external_id: str = ""
     catalog_source: str = "API"
 
-
 # =====================================================
 # MODELO DE IMPORTAÇÃO EM LOTE
 # =====================================================
@@ -97,7 +92,6 @@ class ProductBatch(BaseModel):
         min_length=1,
         max_length=100
     )
-
 
 # =====================================================
 # AUTENTICAÇÃO
@@ -122,6 +116,20 @@ def verify_api_key(x_api_key):
             detail="Invalid API key."
         )
 
+# =====================================================
+# FILTRO DE OFERTAS PÚBLICAS
+# =====================================================
+
+def filter_public_offers(offers):
+
+    return [
+        offer for offer in offers
+        if str(offer.get("catalog_source", "")).strip().upper() != "TEST"
+        and str(offer.get("store", "")).strip().lower() not in ("", "unknown store")
+        and str(offer.get("name", "")).strip().lower() != "string"
+        and str(offer.get("product_code", "")).strip().lower() != "string"
+        and offer.get("is_active") in (1, True)
+    ]
 
 # =====================================================
 # ROTAS PRINCIPAIS
@@ -137,7 +145,6 @@ def home():
         "message": "Webeout API is running."
     }
 
-
 @app.get("/health")
 def health():
 
@@ -145,7 +152,6 @@ def health():
         "status": "healthy",
         "database": "connected"
     }
-
 
 # =====================================================
 # PRODUTOS
@@ -157,7 +163,6 @@ def list_products(
 ):
 
     return database.get_products(market)
-
 
 @app.get("/products/{product_code}/history")
 def product_history(product_code: str):
@@ -172,7 +177,6 @@ def product_history(product_code: str):
 
     return engine.get_history(product_code)
 
-
 @app.get("/products/{product_code}/analysis")
 def product_analysis(product_code: str):
 
@@ -186,7 +190,6 @@ def product_analysis(product_code: str):
 
     return engine.analyze_price(product_code)
 
-
 # =====================================================
 # OFERTAS
 # =====================================================
@@ -196,8 +199,9 @@ def list_offers(
     market: Literal["US", "DE"] | None = None
 ):
 
-    return database.get_offers(market=market)
+    offers = database.get_offers(market=market)
 
+    return filter_public_offers(offers)
 
 @app.get("/products/{product_code}/offers")
 def product_offers(product_code: str):
@@ -210,10 +214,11 @@ def product_offers(product_code: str):
             detail="Product not found."
         )
 
-    return database.get_offers(
+    offers = database.get_offers(
         product_id=product["id"]
     )
 
+    return filter_public_offers(offers)
 
 # =====================================================
 # HISTÓRICO INDIVIDUAL DA OFERTA
@@ -224,7 +229,6 @@ def offer_history(offer_id: int):
 
     return engine.get_offer_history(offer_id)
 
-
 # =====================================================
 # ANÁLISE INDIVIDUAL DA OFERTA
 # =====================================================
@@ -233,7 +237,6 @@ def offer_history(offer_id: int):
 def offer_analysis(offer_id: int):
 
     return engine.analyze_offer(offer_id)
-
 
 # =====================================================
 # COMPARAÇÃO ENTRE LOJAS
@@ -251,7 +254,6 @@ def compare_product_offers(product_code: str):
         )
 
     return engine.compare_offers(product_code)
-
 
 # =====================================================
 # REGISTRO INDIVIDUAL PROTEGIDO
@@ -294,7 +296,6 @@ def register_price(
             status_code=400,
             detail=str(error)
         )
-
 
 # =====================================================
 # IMPORTAÇÃO AUTOMÁTICA EM LOTE
