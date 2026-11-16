@@ -1,4 +1,4 @@
 
 fastapi
-uvicorn
-pydantic[binary]
+uvicorn[standard]
+psycopg[binary]
