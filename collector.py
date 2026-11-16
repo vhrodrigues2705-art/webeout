@@ -2,6 +2,7 @@
 # =====================================================
 # WEBEOUT — PRODUCT COLLECTOR
 # Importador, validador e organizador de ofertas
+# Amazon USA — Preparação de integração
 # =====================================================
 
 import math
@@ -53,7 +54,6 @@ class ProductCollector:
             raise ValueError(f"Invalid {field}.")
 
         value = value.strip()
-
         parsed = urlparse(value)
 
         if parsed.scheme not in ("http", "https"):
@@ -63,6 +63,52 @@ class ProductCollector:
             raise ValueError(f"Invalid {field}.")
 
         return value
+
+    # =================================================
+    # VALIDAR PRODUTO AMAZON USA
+    # =================================================
+
+    def validate_amazon_product(self, product):
+
+        market = str(product.get("market", "")).strip().upper()
+        currency = str(product.get("currency", "")).strip().upper()
+
+        if market != "US":
+            raise ValueError("Amazon integration currently supports US only.")
+
+        if currency != "USD":
+            raise ValueError("Amazon USA products must use USD.")
+
+        store = str(product.get("store", "")).strip().lower()
+
+        if store not in ("amazon", "amazon.com"):
+            raise ValueError("Invalid Amazon store.")
+
+        asin = str(product.get("external_id") or "").strip()
+
+        if len(asin) != 10 or not asin.isalnum():
+            raise ValueError("Invalid Amazon ASIN.")
+
+        product_url = self.validate_url(
+            product.get("product_url") or "",
+            "Amazon product URL"
+        )
+
+        parsed = urlparse(product_url)
+        hostname = (parsed.hostname or "").lower()
+
+        if hostname not in (
+            "amazon.com",
+            "www.amazon.com",
+            "amzn.com",
+            "www.amzn.com"
+        ):
+            raise ValueError("Product URL must belong to Amazon USA.")
+
+        if product.get("catalog_source", "").strip().upper() != "AMAZON":
+            raise ValueError("Invalid Amazon catalog source.")
+
+        return True
 
     # =================================================
     # VALIDAR PRODUTO
@@ -119,7 +165,9 @@ class ProductCollector:
             raise ValueError("Product name is too short.")
 
         if product_code.lower() == name.lower():
-            raise ValueError("Product code and name cannot be identical.")
+            raise ValueError(
+                "Product code and name cannot be identical."
+            )
 
         try:
             price = float(product["price"])
@@ -174,6 +222,13 @@ class ProductCollector:
             product.get("image_url") or "",
             "image URL"
         )
+
+        catalog_source = str(
+            product.get("catalog_source") or "IMPORT"
+        ).strip().upper()
+
+        if catalog_source == "AMAZON":
+            self.validate_amazon_product(product)
 
         return True
 
@@ -234,7 +289,7 @@ class ProductCollector:
         )
 
         # ---------------------------------------------
-        # 2. CADASTRAR OU ATUALIZAR A OFERTA DA LOJA
+        # 2. CADASTRAR OU ATUALIZAR A OFERTA
         # ---------------------------------------------
 
         offer_id = database.add_offer(
@@ -248,13 +303,13 @@ class ProductCollector:
         )
 
         # ---------------------------------------------
-        # 3. CONSULTAR HISTÓRICO DA OFERTA
+        # 3. CONSULTAR HISTÓRICO
         # ---------------------------------------------
 
         history = database.get_offer_history(offer_id)
 
         # ---------------------------------------------
-        # 4. EVITAR REGISTROS DUPLICADOS DE PREÇO
+        # 4. EVITAR PREÇOS DUPLICADOS
         # ---------------------------------------------
 
         if (
@@ -291,6 +346,7 @@ class ProductCollector:
             "currency": currency,
             "price": price,
             "price_updated": price_updated,
+            "catalog_source": catalog_source,
             "message": "Offer imported successfully."
         }
 
@@ -345,4 +401,5 @@ if __name__ == "__main__":
     print("====================================")
     print("Database connected.")
     print("Product validation enabled.")
-    print("Waiting for an authorized data source.")
+    print("Amazon USA validation prepared.")
+    print("Waiting for authorized Amazon API access.")
