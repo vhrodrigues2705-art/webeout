@@ -1,128 +1,231 @@
 
 # =====================================================
 # WEBEOUT — DATABASE SYSTEM
-# SQLite + suporte a fontes externas e afiliados
+# PostgreSQL (Neon) + SQLite (local)
 # =====================================================
 
+import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 
 
 DATABASE_PATH = Path(__file__).resolve().parent / "webeout.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+USE_POSTGRES = DATABASE_URL.startswith(
+    ("postgresql://", "postgres://")
+)
 
 
 def current_timestamp():
     return datetime.now(timezone.utc).isoformat()
 
 
+# =====================================================
+# CONEXÃO
+# =====================================================
+
+class DatabaseConnection:
+
+    def __init__(self, connection, postgres=False):
+        self.connection = connection
+        self.postgres = postgres
+
+    def execute(self, query, parameters=()):
+        if self.postgres:
+            query = query.replace("?", "%s")
+
+        return self.connection.execute(query, parameters)
+
+    def executescript(self, script):
+        if self.postgres:
+            for statement in script.split(";"):
+                statement = statement.strip()
+                if statement:
+                    self.connection.execute(statement)
+        else:
+            self.connection.executescript(script)
+
+    def __enter__(self):
+        self.connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self.connection.__exit__(
+            exc_type, exc_value, traceback
+        )
+
+
 def get_connection():
+
+    if USE_POSTGRES:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        connection = psycopg.connect(
+            DATABASE_URL,
+            row_factory=dict_row,
+            connect_timeout=15
+        )
+
+        return DatabaseConnection(connection, postgres=True)
+
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+
+    return DatabaseConnection(connection)
 
 
 # =====================================================
-# CRIAR E ATUALIZAR ESTRUTURA DO BANCO
+# CRIAR E ATUALIZAR ESTRUTURA
 # =====================================================
 
 def initialize_database():
 
     with get_connection() as connection:
 
-        # 1. Cria as tabelas básicas.
-        # Não cria índices de colunas novas aqui.
+        if USE_POSTGRES:
 
-        connection.executescript("""
+            connection.executescript("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id BIGSERIAL PRIMARY KEY,
+                    product_code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    category TEXT,
+                    market TEXT NOT NULL
+                        CHECK (market IN ('US', 'DE')),
+                    currency TEXT NOT NULL
+                        CHECK (currency IN ('USD', 'EUR')),
+                    store TEXT,
+                    product_url TEXT,
+                    image_url TEXT,
+                    created_at TEXT NOT NULL,
+                    affiliate_url TEXT,
+                    external_id TEXT,
+                    catalog_source TEXT,
+                    last_seen_at TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1
+                );
 
-            CREATE TABLE IF NOT EXISTS products (
+                CREATE TABLE IF NOT EXISTS price_history (
+                    id BIGSERIAL PRIMARY KEY,
+                    product_id BIGINT NOT NULL,
+                    price DOUBLE PRECISION NOT NULL
+                        CHECK (price > 0),
+                    currency TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    source TEXT,
+                    FOREIGN KEY (product_id)
+                        REFERENCES products(id)
+                        ON DELETE CASCADE
+                );
 
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_code TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                category TEXT,
+                CREATE INDEX IF NOT EXISTS idx_price_product
+                    ON price_history(product_id);
 
-                market TEXT NOT NULL
-                    CHECK (market IN ('US', 'DE')),
+                CREATE INDEX IF NOT EXISTS idx_price_date
+                    ON price_history(recorded_at);
 
-                currency TEXT NOT NULL
-                    CHECK (currency IN ('USD', 'EUR')),
+                CREATE INDEX IF NOT EXISTS idx_product_market
+                    ON products(market);
 
-                store TEXT,
-                product_url TEXT,
-                image_url TEXT,
-                created_at TEXT NOT NULL
+                CREATE INDEX IF NOT EXISTS idx_product_external
+                    ON products(external_id);
+            """)
 
-            );
+            # Migrações seguras para bancos já existentes.
+            connection.executescript("""
+                ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS affiliate_url TEXT;
 
+                ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS external_id TEXT;
 
-            CREATE TABLE IF NOT EXISTS price_history (
+                ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS catalog_source TEXT;
 
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                product_id INTEGER NOT NULL,
+                ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS last_seen_at TEXT;
 
-                price REAL NOT NULL
-                    CHECK (price > 0),
+                ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS is_active INTEGER
+                    NOT NULL DEFAULT 1;
+            """)
 
-                currency TEXT NOT NULL,
-                recorded_at TEXT NOT NULL,
-                source TEXT,
+        else:
 
-                FOREIGN KEY (product_id)
-                    REFERENCES products(id)
-                    ON DELETE CASCADE
+            connection.executescript("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    category TEXT,
+                    market TEXT NOT NULL
+                        CHECK (market IN ('US', 'DE')),
+                    currency TEXT NOT NULL
+                        CHECK (currency IN ('USD', 'EUR')),
+                    store TEXT,
+                    product_url TEXT,
+                    image_url TEXT,
+                    created_at TEXT NOT NULL
+                );
 
-            );
+                CREATE TABLE IF NOT EXISTS price_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER NOT NULL,
+                    price REAL NOT NULL CHECK (price > 0),
+                    currency TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    source TEXT,
+                    FOREIGN KEY (product_id)
+                        REFERENCES products(id)
+                        ON DELETE CASCADE
+                );
+            """)
 
-        """)
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(products)"
+                ).fetchall()
+            }
 
-        # 2. Identifica as colunas que já existem.
+            migrations = {
+                "affiliate_url": "TEXT",
+                "external_id": "TEXT",
+                "catalog_source": "TEXT",
+                "last_seen_at": "TEXT",
+                "is_active": "INTEGER NOT NULL DEFAULT 1"
+            }
 
-        columns = {
-            row["name"]
-            for row in connection.execute(
-                "PRAGMA table_info(products)"
-            ).fetchall()
-        }
+            for column, definition in migrations.items():
+                if column not in columns:
+                    connection.execute(
+                        f"ALTER TABLE products "
+                        f"ADD COLUMN {column} {definition}"
+                    )
 
-        # 3. Adiciona as novas colunas sem apagar os dados.
+            connection.executescript("""
+                CREATE INDEX IF NOT EXISTS idx_price_product
+                    ON price_history(product_id);
 
-        migrations = {
-            "affiliate_url": "TEXT",
-            "external_id": "TEXT",
-            "catalog_source": "TEXT",
-            "last_seen_at": "TEXT",
-            "is_active": "INTEGER NOT NULL DEFAULT 1"
-        }
+                CREATE INDEX IF NOT EXISTS idx_price_date
+                    ON price_history(recorded_at);
 
-        for column, definition in migrations.items():
+                CREATE INDEX IF NOT EXISTS idx_product_market
+                    ON products(market);
 
-            if column not in columns:
+                CREATE INDEX IF NOT EXISTS idx_product_external
+                    ON products(external_id);
+            """)
 
-                connection.execute(
-                    f"ALTER TABLE products ADD COLUMN {column} {definition}"
-                )
-
-        # 4. Agora que as colunas existem, cria os índices.
-
-        connection.executescript("""
-
-            CREATE INDEX IF NOT EXISTS idx_price_product
-            ON price_history(product_id);
-
-            CREATE INDEX IF NOT EXISTS idx_price_date
-            ON price_history(recorded_at);
-
-            CREATE INDEX IF NOT EXISTS idx_product_market
-            ON products(market);
-
-            CREATE INDEX IF NOT EXISTS idx_product_external
-            ON products(external_id);
-
-        """)
-
-    print("Webeout database initialized successfully.")
+    print(
+        "Webeout PostgreSQL database initialized successfully."
+        if USE_POSTGRES
+        else "Webeout SQLite database initialized successfully."
+    )
 
 
 # =====================================================
@@ -162,7 +265,6 @@ def add_product(
     with get_connection() as connection:
 
         connection.execute("""
-
             INSERT INTO products (
                 product_code,
                 name,
@@ -179,52 +281,33 @@ def add_product(
                 is_active,
                 created_at
             )
-
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 
             ON CONFLICT(product_code) DO UPDATE SET
-
                 name = excluded.name,
-
                 category = COALESCE(
-                    excluded.category,
-                    products.category
+                    excluded.category, products.category
                 ),
-
                 store = COALESCE(
-                    excluded.store,
-                    products.store
+                    excluded.store, products.store
                 ),
-
                 product_url = COALESCE(
-                    excluded.product_url,
-                    products.product_url
+                    excluded.product_url, products.product_url
                 ),
-
                 image_url = COALESCE(
-                    excluded.image_url,
-                    products.image_url
+                    excluded.image_url, products.image_url
                 ),
-
                 affiliate_url = COALESCE(
-                    excluded.affiliate_url,
-                    products.affiliate_url
+                    excluded.affiliate_url, products.affiliate_url
                 ),
-
                 external_id = COALESCE(
-                    excluded.external_id,
-                    products.external_id
+                    excluded.external_id, products.external_id
                 ),
-
                 catalog_source = COALESCE(
-                    excluded.catalog_source,
-                    products.catalog_source
+                    excluded.catalog_source, products.catalog_source
                 ),
-
                 last_seen_at = excluded.last_seen_at,
-
                 is_active = 1
-
         """, (
             product_code,
             name,
@@ -274,7 +357,6 @@ def add_price(product_id, price, currency, source=None):
             raise ValueError("Currency does not match product.")
 
         cursor = connection.execute("""
-
             INSERT INTO price_history (
                 product_id,
                 price,
@@ -282,9 +364,8 @@ def add_price(product_id, price, currency, source=None):
                 recorded_at,
                 source
             )
-
             VALUES (?, ?, ?, ?, ?)
-
+            RETURNING id
         """, (
             product_id,
             round(price, 2),
@@ -293,7 +374,7 @@ def add_price(product_id, price, currency, source=None):
             source
         ))
 
-        return cursor.lastrowid
+        return cursor.fetchone()["id"]
 
 
 # =====================================================
@@ -305,19 +386,14 @@ def get_price_history(product_id):
     with get_connection() as connection:
 
         rows = connection.execute("""
-
             SELECT
                 price,
                 currency,
                 recorded_at,
                 source
-
             FROM price_history
-
             WHERE product_id = ?
-
             ORDER BY recorded_at ASC
-
         """, (product_id,)).fetchall()
 
         return [dict(row) for row in rows]
@@ -332,7 +408,6 @@ def get_products(market=None):
     with get_connection() as connection:
 
         if market is None:
-
             rows = connection.execute("""
                 SELECT *
                 FROM products
@@ -340,7 +415,6 @@ def get_products(market=None):
             """).fetchall()
 
         else:
-
             rows = connection.execute("""
                 SELECT *
                 FROM products
