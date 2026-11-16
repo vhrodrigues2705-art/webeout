@@ -1,0 +1,357 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description"
+        content="Webeout — Global Deal Tracker. Discover products, monitor price history and find genuine deals worldwide.">
+
+    <meta name="theme-color" content="#080808">
+
+    <title>Webeout | Global Deal Tracker</title>
+
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js" defer></script>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+
+    <header class="site-header">
+
+        <a href="#" class="logo" aria-label="Webeout Home">
+            Webe<span>out</span>
+        </a>
+
+        <nav class="main-nav">
+            <a href="#">Home</a>
+            <a href="#offers">Latest Deals</a>
+            <a href="#categories">Categories</a>
+            <a href="#markets">Markets</a>
+        </nav>
+
+        <div class="header-actions">
+
+            <select class="market-select" id="market"
+                aria-label="Select your market">
+
+                <option value="US">🇺🇸 USA · USD $</option>
+                <option value="DE">🇩🇪 Germany · EUR €</option>
+
+            </select>
+
+        </div>
+
+    </header>
+
+
+    <!-- HERO -->
+
+    <main>
+
+        <section class="hero">
+
+            <div class="hero-content">
+
+                <div class="tag">
+                    ⚡ GLOBAL DEAL TRACKER
+                </div>
+
+                <h1>
+                    Real Deals.<br>
+                    Smarter Shopping.<br>
+                    <span>Worldwide.</span>
+                </h1>
+
+                <p>
+                    Discover products, track price movements
+                    and identify genuine opportunities across
+                    international markets.
+                </p>
+
+                <div class="hero-actions">
+
+                    <a href="#offers" class="button">
+                        Explore Deals →
+                    </a>
+
+                    <a href="#categories" class="secondary-button">
+                        Browse Categories
+                    </a>
+
+                </div>
+
+                <div class="hero-trust">
+
+                    <span>🌎 International Markets</span>
+                    <span>📊 Price History</span>
+                    <span>🔎 Deal Tracking</span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- SEARCH -->
+
+        <section class="search-section">
+
+            <div class="search-box">
+
+                <input
+                    type="search"
+                    id="search"
+                    placeholder="Search products, brands or stores..."
+                    autocomplete="off"
+                    aria-label="Search products"
+                >
+
+                <button
+                    class="button"
+                    type="button"
+                    id="search-button"
+                >
+                    Search
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- MARKETS -->
+
+        <section class="container markets-section" id="markets">
+
+            <div class="section-heading">
+
+                <span class="tag">GLOBAL SHOPPING</span>
+
+                <h2 class="section-title">
+                    Shop Around The World
+                </h2>
+
+                <p class="section-description">
+                    Explore products from different international markets.
+                </p>
+
+            </div>
+
+            <div class="trust">
+
+                <div class="trust-item">
+                    <h3>🇺🇸 USA</h3>
+                    <p>United States · USD $</p>
+                </div>
+
+                <div class="trust-item">
+                    <h3>🇩🇪 Germany</h3>
+                    <p>Germany · EUR €</p>
+                </div>
+
+                <div class="trust-item">
+                    <h3>🌎 Global</h3>
+                    <p>More markets coming soon</p>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- CATEGORIES -->
+
+        <section class="container categories-section" id="categories">
+
+            <div class="section-heading">
+
+                <span class="tag">EXPLORE</span>
+
+                <h2 class="section-title">
+                    Browse Categories
+                </h2>
+
+                <p class="section-description">
+                    Find products across different shopping categories.
+                </p>
+
+            </div>
+
+            <div class="categories">
+
+                <div class="category">
+                    <div class="icon">💪</div>
+                    <h3>Supplements</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">✨</div>
+                    <h3>Beauty & Skincare</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">💻</div>
+                    <h3>Electronics</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">🐾</div>
+                    <h3>Pet Supplies</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">🏠</div>
+                    <h3>Home & Living</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">🎮</div>
+                    <h3>Gaming</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">👕</div>
+                    <h3>Fashion</h3>
+                </div>
+
+                <div class="category">
+                    <div class="icon">🔥</div>
+                    <h3>Best Deals</h3>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- LATEST DEALS -->
+
+        <section class="container offers" id="offers">
+
+            <div class="section-heading">
+
+                <span class="tag">PRICE TRACKING</span>
+
+                <h2 class="section-title">
+                    🔥 Latest Deals
+                </h2>
+
+                <p class="section-description">
+                    Explore products stored in the Webeout database
+                    and follow their recorded price history.
+                </p>
+
+            </div>
+
+            <div class="offers-grid" aria-live="polite">
+
+                <div class="empty-state">
+
+                    <div class="icon">⏳</div>
+
+                    <h3>Loading products...</h3>
+
+                    <p>
+                        Connecting to the Webeout price database.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- PRICE TRACKING INFORMATION -->
+
+        <section class="container tracking-section">
+
+            <div class="tracking-content">
+
+                <span class="tag">SMARTER PRICE DISCOVERY</span>
+
+                <h2 class="section-title">
+                    Know The Price Before You Buy.
+                </h2>
+
+                <p class="section-description">
+                    Webeout is being developed to monitor product
+                    prices, preserve historical records and help
+                    shoppers identify meaningful price changes.
+                </p>
+
+                <a href="#offers" class="secondary-button">
+                    Explore Products →
+                </a>
+
+            </div>
+
+            <div class="tracking-features">
+
+                <div class="tracking-feature">
+                    <span>📊</span>
+                    <div>
+                        <h3>Price History</h3>
+                        <p>Records of previously registered prices.</p>
+                    </div>
+                </div>
+
+                <div class="tracking-feature">
+                    <span>🔍</span>
+                    <div>
+                        <h3>Price Analysis</h3>
+                        <p>Compare current prices with historical records.</p>
+                    </div>
+                </div>
+
+                <div class="tracking-feature">
+                    <span>🌎</span>
+                    <div>
+                        <h3>Global Markets</h3>
+                        <p>International shopping opportunities.</p>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- FOOTER -->
+
+    <footer class="site-footer">
+
+        <div class="logo">
+            Webe<span>out</span>
+        </div>
+
+        <p>
+            Global Deal Tracker
+        </p>
+
+        <p class="footer-description">
+            Real Price History · Smarter Shopping · Global Markets
+        </p>
+
+        <p class="affiliate-disclosure">
+            Webeout may earn commissions from qualifying purchases
+            made through affiliate links. Prices and availability
+            may change at any time.
+        </p>
+
+        <p class="copyright">
+            © 2026 Webeout. All rights reserved.
+        </p>
+
+    </footer>
+
+</body>
+</html>
