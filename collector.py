@@ -5,13 +5,64 @@
 # =====================================================
 
 import math
-import database
+from urllib.parse import urlparse
 
+import database
 
 class ProductCollector:
 
     def __init__(self):
         database.initialize_database()
+
+    # =================================================
+    # VALIDAR TEXTO
+    # =================================================
+
+    def validate_text(self, value, field):
+
+        if not isinstance(value, str):
+            raise ValueError(f"Invalid {field}.")
+
+        value = value.strip()
+
+        invalid_values = {
+            "",
+            "string",
+            "null",
+            "none",
+            "undefined",
+            "unknown",
+            "n/a"
+        }
+
+        if value.lower() in invalid_values:
+            raise ValueError(f"Invalid {field}.")
+
+        return value
+
+    # =================================================
+    # VALIDAR URL
+    # =================================================
+
+    def validate_url(self, value, field):
+
+        if not value:
+            return ""
+
+        if not isinstance(value, str):
+            raise ValueError(f"Invalid {field}.")
+
+        value = value.strip()
+
+        parsed = urlparse(value)
+
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid {field}.")
+
+        if not parsed.netloc:
+            raise ValueError(f"Invalid {field}.")
+
+        return value
 
     # =================================================
     # VALIDAR PRODUTO
@@ -31,12 +82,44 @@ class ProductCollector:
         ]
 
         for field in required_fields:
+
             value = product.get(field)
 
             if value is None or value == "":
                 raise ValueError(
                     f"Missing required field: {field}"
                 )
+
+        product_code = self.validate_text(
+            product["product_code"],
+            "product code"
+        )
+
+        name = self.validate_text(
+            product["name"],
+            "product name"
+        )
+
+        store = self.validate_text(
+            product.get("store"),
+            "store"
+        )
+
+        if store.lower() in (
+            "unknown store",
+            "test",
+            "example store"
+        ):
+            raise ValueError("Store is not valid.")
+
+        if len(product_code) < 3:
+            raise ValueError("Product code is too short.")
+
+        if len(name) < 3:
+            raise ValueError("Product name is too short.")
+
+        if product_code.lower() == name.lower():
+            raise ValueError("Product code and name cannot be identical.")
 
         try:
             price = float(product["price"])
@@ -46,8 +129,8 @@ class ProductCollector:
         if not math.isfinite(price) or price <= 0:
             raise ValueError("Invalid product price.")
 
-        market = str(product["market"]).upper()
-        currency = str(product["currency"]).upper()
+        market = str(product["market"]).strip().upper()
+        currency = str(product["currency"]).strip().upper()
 
         if market not in ("US", "DE"):
             raise ValueError("Unsupported market.")
@@ -60,11 +143,37 @@ class ProductCollector:
         if currency != expected_currency:
             raise ValueError("Currency does not match market.")
 
-        if not str(product["product_code"]).strip():
-            raise ValueError("Product code cannot be empty.")
+        external_id = str(
+            product.get("external_id") or ""
+        ).strip()
 
-        if not str(product["name"]).strip():
-            raise ValueError("Product name cannot be empty.")
+        product_url = self.validate_url(
+            product.get("product_url") or "",
+            "product URL"
+        )
+
+        if not external_id and not product_url:
+            raise ValueError(
+                "Product requires an external ID or product URL."
+            )
+
+        if external_id.lower() in (
+            "string",
+            "null",
+            "undefined",
+            "none"
+        ):
+            raise ValueError("Invalid external ID.")
+
+        self.validate_url(
+            product.get("affiliate_url") or "",
+            "affiliate URL"
+        )
+
+        self.validate_url(
+            product.get("image_url") or "",
+            "image URL"
+        )
 
         return True
 
@@ -76,33 +185,51 @@ class ProductCollector:
 
         self.validate_product(product)
 
-        market = str(product["market"]).upper()
-        currency = str(product["currency"]).upper()
+        product_code = product["product_code"].strip()
+        name = product["name"].strip()
+
+        market = str(product["market"]).strip().upper()
+        currency = str(product["currency"]).strip().upper()
+
         price = round(float(product["price"]), 2)
 
-        store = str(
-            product.get("store") or "Unknown Store"
+        store = product["store"].strip()
+
+        catalog_source = str(
+            product.get("catalog_source") or "IMPORT"
+        ).strip().upper()
+
+        if catalog_source.lower() in (
+            "string",
+            "null",
+            "undefined",
+            "none"
+        ):
+            raise ValueError("Invalid catalog source.")
+
+        external_id = str(
+            product.get("external_id") or ""
         ).strip()
 
-        catalog_source = (
-            product.get("catalog_source") or "IMPORT"
-        )
+        product_url = product.get("product_url") or ""
+        affiliate_url = product.get("affiliate_url") or ""
+        image_url = product.get("image_url") or ""
 
         # ---------------------------------------------
         # 1. CADASTRAR OU ATUALIZAR O PRODUTO
         # ---------------------------------------------
 
         product_id = database.add_product(
-            product_code=product["product_code"],
-            name=product["name"],
+            product_code=product_code,
+            name=name,
             category=product.get("category", "Other"),
             market=market,
             currency=currency,
             store=store,
-            product_url=product.get("product_url"),
-            image_url=product.get("image_url"),
-            affiliate_url=product.get("affiliate_url"),
-            external_id=product.get("external_id"),
+            product_url=product_url,
+            image_url=image_url,
+            affiliate_url=affiliate_url,
+            external_id=external_id,
             catalog_source=catalog_source
         )
 
@@ -113,10 +240,10 @@ class ProductCollector:
         offer_id = database.add_offer(
             product_id=product_id,
             store=store,
-            external_id=product.get("external_id"),
-            product_url=product.get("product_url"),
-            affiliate_url=product.get("affiliate_url"),
-            image_url=product.get("image_url"),
+            external_id=external_id,
+            product_url=product_url,
+            affiliate_url=affiliate_url,
+            image_url=image_url,
             catalog_source=catalog_source
         )
 
@@ -145,6 +272,7 @@ class ProductCollector:
             price_updated = True
 
         else:
+
             price_id = None
             price_updated = False
 
@@ -157,7 +285,7 @@ class ProductCollector:
             "product_id": product_id,
             "offer_id": offer_id,
             "price_id": price_id,
-            "product_code": product["product_code"],
+            "product_code": product_code,
             "store": store,
             "market": market,
             "currency": currency,
@@ -177,6 +305,7 @@ class ProductCollector:
         for product in products:
 
             try:
+
                 result = self.import_product(product)
                 results.append(result)
 
@@ -203,7 +332,6 @@ class ProductCollector:
             "results": results
         }
 
-
 # =====================================================
 # EXECUÇÃO
 # =====================================================
@@ -216,5 +344,5 @@ if __name__ == "__main__":
     print("WEBEOUT PRODUCT COLLECTOR")
     print("====================================")
     print("Database connected.")
-    print("Independent offer collection ready.")
+    print("Product validation enabled.")
     print("Waiting for an authorized data source.")
