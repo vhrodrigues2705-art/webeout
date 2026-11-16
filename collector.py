@@ -1,7 +1,7 @@
 
 # =====================================================
 # WEBEOUT — PRODUCT COLLECTOR
-# Importador e validador de produtos
+# Importador, validador e organizador de ofertas
 # =====================================================
 
 import math
@@ -19,6 +19,9 @@ class ProductCollector:
 
     def validate_product(self, product):
 
+        if not isinstance(product, dict):
+            raise ValueError("Product must be a dictionary.")
+
         required_fields = [
             "product_code",
             "name",
@@ -28,18 +31,23 @@ class ProductCollector:
         ]
 
         for field in required_fields:
-            if field not in product or product[field] is None:
+            value = product.get(field)
+
+            if value is None or value == "":
                 raise ValueError(
                     f"Missing required field: {field}"
                 )
 
-        price = float(product["price"])
+        try:
+            price = float(product["price"])
+        except (TypeError, ValueError):
+            raise ValueError("Invalid product price.")
 
         if not math.isfinite(price) or price <= 0:
             raise ValueError("Invalid product price.")
 
-        market = product["market"]
-        currency = product["currency"]
+        market = str(product["market"]).upper()
+        currency = str(product["currency"]).upper()
 
         if market not in ("US", "DE"):
             raise ValueError("Unsupported market.")
@@ -52,59 +60,114 @@ class ProductCollector:
         if currency != expected_currency:
             raise ValueError("Currency does not match market.")
 
+        if not str(product["product_code"]).strip():
+            raise ValueError("Product code cannot be empty.")
+
+        if not str(product["name"]).strip():
+            raise ValueError("Product name cannot be empty.")
+
         return True
 
     # =================================================
-    # IMPORTAR UM PRODUTO
+    # IMPORTAR UMA OFERTA
     # =================================================
 
     def import_product(self, product):
 
         self.validate_product(product)
 
+        market = str(product["market"]).upper()
+        currency = str(product["currency"]).upper()
+        price = round(float(product["price"]), 2)
+
+        store = str(
+            product.get("store") or "Unknown Store"
+        ).strip()
+
+        catalog_source = (
+            product.get("catalog_source") or "IMPORT"
+        )
+
+        # ---------------------------------------------
+        # 1. CADASTRAR OU ATUALIZAR O PRODUTO
+        # ---------------------------------------------
+
         product_id = database.add_product(
             product_code=product["product_code"],
             name=product["name"],
             category=product.get("category", "Other"),
-            market=product["market"],
-            currency=product["currency"],
-            store=product.get("store"),
+            market=market,
+            currency=currency,
+            store=store,
             product_url=product.get("product_url"),
             image_url=product.get("image_url"),
             affiliate_url=product.get("affiliate_url"),
             external_id=product.get("external_id"),
-            catalog_source=product.get("catalog_source")
+            catalog_source=catalog_source
         )
 
-        # Verifica o último preço registrado.
-        history = database.get_price_history(product_id)
+        # ---------------------------------------------
+        # 2. CADASTRAR OU ATUALIZAR A OFERTA DA LOJA
+        # ---------------------------------------------
 
-        new_price = round(float(product["price"]), 2)
+        offer_id = database.add_offer(
+            product_id=product_id,
+            store=store,
+            external_id=product.get("external_id"),
+            product_url=product.get("product_url"),
+            affiliate_url=product.get("affiliate_url"),
+            image_url=product.get("image_url"),
+            catalog_source=catalog_source
+        )
 
-        if not history or round(float(history[-1]["price"]), 2) != new_price:
+        # ---------------------------------------------
+        # 3. CONSULTAR HISTÓRICO DA OFERTA
+        # ---------------------------------------------
 
-            database.add_price(
-                product_id=product_id,
-                price=new_price,
-                currency=product["currency"],
-                source=product.get("catalog_source", "IMPORT")
+        history = database.get_offer_history(offer_id)
+
+        # ---------------------------------------------
+        # 4. EVITAR REGISTROS DUPLICADOS DE PREÇO
+        # ---------------------------------------------
+
+        if (
+            not history
+            or round(float(history[-1]["price"]), 2) != price
+        ):
+
+            price_id = database.add_offer_price(
+                offer_id=offer_id,
+                price=price,
+                currency=currency,
+                source=catalog_source
             )
 
             price_updated = True
 
         else:
+            price_id = None
             price_updated = False
+
+        # ---------------------------------------------
+        # 5. RETORNAR RESULTADO
+        # ---------------------------------------------
 
         return {
             "success": True,
             "product_id": product_id,
+            "offer_id": offer_id,
+            "price_id": price_id,
             "product_code": product["product_code"],
+            "store": store,
+            "market": market,
+            "currency": currency,
+            "price": price,
             "price_updated": price_updated,
-            "message": "Product imported successfully."
+            "message": "Offer imported successfully."
         }
 
     # =================================================
-    # IMPORTAR VÁRIOS PRODUTOS
+    # IMPORTAR VÁRIAS OFERTAS
     # =================================================
 
     def import_products(self, products):
@@ -121,7 +184,11 @@ class ProductCollector:
 
                 results.append({
                     "success": False,
-                    "product_code": product.get("product_code"),
+                    "product_code": (
+                        product.get("product_code")
+                        if isinstance(product, dict)
+                        else None
+                    ),
                     "error": str(error)
                 })
 
@@ -145,5 +212,9 @@ if __name__ == "__main__":
 
     collector = ProductCollector()
 
-    print("Webeout Product Collector ready.")
-    print("Waiting for an authorized product data source.")
+    print("====================================")
+    print("WEBEOUT PRODUCT COLLECTOR")
+    print("====================================")
+    print("Database connected.")
+    print("Independent offer collection ready.")
+    print("Waiting for an authorized data source.")

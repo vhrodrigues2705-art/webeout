@@ -1,4 +1,9 @@
 
+# =====================================================
+# WEBEOUT — API
+# Global Deal Tracker
+# =====================================================
+
 import os
 import secrets
 from typing import Literal
@@ -9,21 +14,30 @@ from pydantic import BaseModel, Field
 
 import database
 from price_engine import PriceEngine
+from collector import ProductCollector
 
 
-# Banco de dados e motor de preços
+# =====================================================
+# INICIALIZAÇÃO
+# =====================================================
+
 database.initialize_database()
+
 engine = PriceEngine()
+collector = ProductCollector()
 
 
 app = FastAPI(
     title="Webeout API",
     description="Global Deal Tracker",
-    version="1.1.0"
+    version="1.3.0"
 )
 
 
-# Origens autorizadas a acessar a API
+# =====================================================
+# CORS
+# =====================================================
+
 default_origins = [
     "http://localhost:5500",
     "http://127.0.0.1:5500",
@@ -48,73 +62,51 @@ app.add_middleware(
 )
 
 
+# =====================================================
+# MODELO DE REGISTRO DE PREÇOS
+# =====================================================
+
 class PriceRegistration(BaseModel):
+
     product_code: str
     name: str
-    category: str
+    category: str = "Other"
+
     price: float = Field(gt=0)
+
     currency: Literal["USD", "EUR"]
     market: Literal["US", "DE"]
+
     store: str = ""
+
     product_url: str = ""
+    affiliate_url: str = ""
     image_url: str = ""
 
-
-@app.get("/")
-def home():
-    return {
-        "project": "Webeout",
-        "status": "online",
-        "message": "Webeout API is running."
-    }
+    external_id: str = ""
+    catalog_source: str = "API"
 
 
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
+# =====================================================
+# MODELO DE IMPORTAÇÃO EM LOTE
+# =====================================================
+
+class ProductBatch(BaseModel):
+
+    products: list[PriceRegistration] = Field(
+        min_length=1,
+        max_length=100
+    )
 
 
-@app.get("/products")
-def list_products(
-    market: Literal["US", "DE"] | None = None
-):
-    return database.get_products(market)
+# =====================================================
+# AUTENTICAÇÃO
+# =====================================================
 
+def verify_api_key(x_api_key):
 
-@app.get("/products/{product_code}/history")
-def product_history(product_code: str):
-    product = engine.find_product(product_code)
-
-    if product is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found."
-        )
-
-    return engine.get_history(product_code)
-
-
-@app.get("/products/{product_code}/analysis")
-def product_analysis(product_code: str):
-    product = engine.find_product(product_code)
-
-    if product is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found."
-        )
-
-    return engine.analyze_price(product_code)
-
-
-@app.post("/prices")
-def register_price(
-    data: PriceRegistration,
-    x_api_key: str | None = Header(default=None)
-):
     api_key = os.getenv("INGEST_API_KEY")
 
-    # Não permite cadastro público sem uma chave configurada
     if not api_key:
         raise HTTPException(
             status_code=503,
@@ -130,7 +122,151 @@ def register_price(
             detail="Invalid API key."
         )
 
+
+# =====================================================
+# ROTAS PRINCIPAIS
+# =====================================================
+
+@app.get("/")
+def home():
+
+    return {
+        "project": "Webeout",
+        "status": "online",
+        "version": "1.3.0",
+        "message": "Webeout API is running."
+    }
+
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "healthy",
+        "database": "connected"
+    }
+
+
+# =====================================================
+# PRODUTOS
+# =====================================================
+
+@app.get("/products")
+def list_products(
+    market: Literal["US", "DE"] | None = None
+):
+
+    return database.get_products(market)
+
+
+@app.get("/products/{product_code}/history")
+def product_history(product_code: str):
+
+    product = engine.find_product(product_code)
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found."
+        )
+
+    return engine.get_history(product_code)
+
+
+@app.get("/products/{product_code}/analysis")
+def product_analysis(product_code: str):
+
+    product = engine.find_product(product_code)
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found."
+        )
+
+    return engine.analyze_price(product_code)
+
+
+# =====================================================
+# OFERTAS
+# =====================================================
+
+@app.get("/offers")
+def list_offers(
+    market: Literal["US", "DE"] | None = None
+):
+
+    return database.get_offers(market=market)
+
+
+@app.get("/products/{product_code}/offers")
+def product_offers(product_code: str):
+
+    product = engine.find_product(product_code)
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found."
+        )
+
+    return database.get_offers(
+        product_id=product["id"]
+    )
+
+
+# =====================================================
+# HISTÓRICO INDIVIDUAL DA OFERTA
+# =====================================================
+
+@app.get("/offers/{offer_id}/history")
+def offer_history(offer_id: int):
+
+    return engine.get_offer_history(offer_id)
+
+
+# =====================================================
+# ANÁLISE INDIVIDUAL DA OFERTA
+# =====================================================
+
+@app.get("/offers/{offer_id}/analysis")
+def offer_analysis(offer_id: int):
+
+    return engine.analyze_offer(offer_id)
+
+
+# =====================================================
+# COMPARAÇÃO ENTRE LOJAS
+# =====================================================
+
+@app.get("/products/{product_code}/comparison")
+def compare_product_offers(product_code: str):
+
+    product = engine.find_product(product_code)
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found."
+        )
+
+    return engine.compare_offers(product_code)
+
+
+# =====================================================
+# REGISTRO INDIVIDUAL PROTEGIDO
+# =====================================================
+
+@app.post("/prices")
+def register_price(
+    data: PriceRegistration,
+    x_api_key: str | None = Header(default=None)
+):
+
+    verify_api_key(x_api_key)
+
     try:
+
         result = engine.register_price(
             product_code=data.product_code,
             name=data.name,
@@ -140,7 +276,10 @@ def register_price(
             market=data.market,
             store=data.store,
             product_url=data.product_url,
-            image_url=data.image_url
+            image_url=data.image_url,
+            affiliate_url=data.affiliate_url,
+            external_id=data.external_id,
+            catalog_source=data.catalog_source
         )
 
         return {
@@ -150,6 +289,45 @@ def register_price(
         }
 
     except ValueError as error:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
+
+# =====================================================
+# IMPORTAÇÃO AUTOMÁTICA EM LOTE
+# =====================================================
+
+@app.post("/collector/import")
+def import_product_batch(
+    batch: ProductBatch,
+    x_api_key: str | None = Header(default=None)
+):
+
+    verify_api_key(x_api_key)
+
+    try:
+
+        products = [
+            product.model_dump()
+            for product in batch.products
+        ]
+
+        result = collector.import_products(products)
+
+        return {
+            "success": result["failed"] == 0,
+            "message": "Product batch processed.",
+            "total": result["total"],
+            "successful": result["successful"],
+            "failed": result["failed"],
+            "results": result["results"]
+        }
+
+    except (ValueError, TypeError, KeyError) as error:
+
         raise HTTPException(
             status_code=400,
             detail=str(error)
